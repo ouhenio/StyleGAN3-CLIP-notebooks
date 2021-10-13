@@ -5,3 +5,13 @@
      alt="Open in Colab"
 />
 </a>
+
+The notebook here is a formatted version of [this one](https://colab.research.google.com/drive/1eYlenR1GHPZXt-YuvXabzO9wfh9CWY36#scrollTo=LQf7tzBQ8rn2), created by [nshepperd](https://twitter.com/nshepperd1)(https://github.com/nshepperd).
+
+This notebook uses work made by [Katherine Crowson](https://twitter.com/RiversHaveWings)(https://github.com/crowsonkb).
+
+StyleGAN3 was created by NVIDIA. [Here](https://github.com/NVlabs/stylegan3) is the original repo.
+
+CLIP (Contrastive Language-Image Pre-Training) is a model made by OpenAI. For more information head over [here](https://github.com/openai/CLIP).
+
+Feel free to suggest any changes! If anyone has any idea what license should this repo use, please let me know.
