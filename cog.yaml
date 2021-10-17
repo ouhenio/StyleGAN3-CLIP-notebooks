@@ -1,0 +1,29 @@
+build:
+  gpu: true
+  cuda: 11.0
+  python_version: "3.8"
+  system_packages:
+    - "libgl1-mesa-glx"
+    - "libglib2.0-0"
+    - "ninja-build"
+  python_packages:
+    - "ninja==1.10.2.2"
+    - "torchvision==0.10.0"
+    - "torch==1.9.0"
+    - "numpy==1.19.4"
+    - "tqdm==4.62.2"
+    - "Pillow==8.3.2"
+    - "einops==0.3.2"
+    - "ftfy==6.0.3"
+    - "ipython==7.19.0"
+    - "scipy==1.7.1"
+    - "regex==2021.10.8"
+  run:
+    - apt-get update && apt-get install -y software-properties-common
+    - add-apt-repository ppa:ubuntu-toolchain-r/test
+    - apt update -y && apt-get install ffmpeg -y
+    - apt install g++-7 -y
+    - update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 60 --slave /usr/bin/g++ g++ /usr/bin/g++-7
+    - update-alternatives --config gcc
+
+predict: "predict.py:Predictor"

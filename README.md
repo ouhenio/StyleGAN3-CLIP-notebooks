@@ -5,6 +5,7 @@
      alt="Open in Colab"
 />
 </a>
+<a href="https://replicate.ai/ouhenio/stylegan3-clip"><img src="https://img.shields.io/static/v1?label=Replicate&message=Demo and Docker Image&color=blue"></a>
 
 Edited version of [this notebook](https://colab.research.google.com/drive/1eYlenR1GHPZXt-YuvXabzO9wfh9CWY36#scrollTo=LQf7tzBQ8rn2), created by [nshepperd](https://twitter.com/nshepperd1)(https://github.com/nshepperd).
 
