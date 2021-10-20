@@ -58,25 +58,24 @@ class Predictor(cog.Predictor):
         help="choose model: FFHQ: human faces, MetFaces: human faces from works of art, AFHGv2: animal faces"
     )
     @cog.input(
-        "steps",
-        type=int,
-        default=200,
-        min=1,
-        help="sampling steps, recommended to set <= 200 to avoid time out "
-    )
-    @cog.input(
         "output_type",
         type=str,
         default='mp4',
         options=['png', 'mp4'],
-        help="choose output the final image or a video. When choose png, progressive output of every 10 steps will be "
-             "displayed"
+        help="choose output the final image or a video"
+    )
+    @cog.input(
+        "steps",
+        type=int,
+        default=200,
+        min=1,
+        help="sampling steps, recommended to set <= 150 to avoid time out when choose video output"
     )
     @cog.input(
         "video_length",
         type=int,
         default=10,
-        max=10,
+        max=20,
         min=1,
         help="choose video length, valid if output is mp4"
     )
@@ -124,9 +123,7 @@ class Predictor(cog.Predictor):
 
         # Sampling loop
         q_ema = q
-        opt = torch.optim.AdamW([q], lr=0.03, betas=(0.0, 0.999))
-
-        # out_path = Path(tempfile.mkdtemp()) / "out.png"
+        opt = torch.optim.AdamW([q], lr=0.08, betas=(0.0, 0.999))
 
         for i in range(steps):
             opt.zero_grad()
@@ -141,9 +138,7 @@ class Predictor(cog.Predictor):
             image = G.synthesis(q_ema * w_stds + G.mapping.w_avg, noise_mode='const')
 
             if i % 10 == 0:
-                tqdm.write(f"Image {i}/{steps} | Current loss: {loss}")
-                # !!TODO: have some issue with the progressive output path
-                # yield checkin(i, steps, loss, image, str(out_path))
+                yield checkin(i, steps, loss, image)
             if output_type == 'mp4':
                 pil_image = TF.to_pil_image(image[0].add(1).div(2).clamp(0, 1))
                 pil_image.save(f'samples/{i:04}.png')
@@ -189,12 +184,13 @@ def make_video(out_path, video_length):
     tqdm.write("The video is ready")
 
 
-def checkin(i, steps, loss, image, img_path):
+def checkin(i, steps, loss, image):
     tf = Compose([
         Resize(224),
         lambda x: torch.clamp((x + 1) / 2, min=0, max=1),
     ])
     tqdm.write(f"Image {i}/{steps} | Current loss: {loss}")
+    img_path = Path(tempfile.mkdtemp()) / "progress.png"
     TF.to_pil_image(tf(image)[0]).save(str(img_path))
     return img_path
 
