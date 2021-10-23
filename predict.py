@@ -1,6 +1,6 @@
 import os
 import sys
-
+import time
 sys.path.insert(0, 'CLIP')
 sys.path.insert(0, 'stylegan3')
 import tempfile
@@ -69,7 +69,13 @@ class Predictor(cog.Predictor):
         type=int,
         default=200,
         min=1,
-        help="sampling steps, recommended to set <= 150 to avoid time out when choose video output"
+        help="sampling steps, for FFHQ and MetFaces models, recommended to set <= 100 to avoid time out"
+    )
+    @cog.input(
+        "learning_rate",
+        type=float,
+        default=0.05,
+        help="learning rate"
     )
     @cog.input(
         "video_length",
@@ -85,7 +91,7 @@ class Predictor(cog.Predictor):
         default=2,
         help="set -1 for random seed"
     )
-    def predict(self, text, model_name='FFHQ', steps=200, output_type='mp4', video_length=10, seed=2):
+    def predict(self, text, model_name, steps, output_type, video_length, seed, learning_rate):
         if os.path.isdir('samples'):
             clean_folder('samples')
         os.makedirs(f'samples', exist_ok=True)
@@ -123,8 +129,13 @@ class Predictor(cog.Predictor):
 
         # Sampling loop
         q_ema = q
-        opt = torch.optim.AdamW([q], lr=0.08, betas=(0.0, 0.999))
-
+        opt = torch.optim.AdamW([q], lr=learning_rate, betas=(0.0, 0.999))
+        img_path = Path(tempfile.mkdtemp()) / "progress.png"
+        tf = Compose([
+            Resize(224),
+            lambda x: torch.clamp((x + 1) / 2, min=0, max=1),
+        ])
+        start_time = time.time()
         for i in range(steps):
             opt.zero_grad()
             w = q * w_stds
@@ -137,23 +148,23 @@ class Predictor(cog.Predictor):
             q_ema = q_ema * 0.9 + q * 0.1
             image = G.synthesis(q_ema * w_stds + G.mapping.w_avg, noise_mode='const')
 
-            if i % 10 == 0:
-                yield checkin(i, steps, loss, image)
+            if (i + 1) % 10 == 0:
+                yield checkin(i, steps, loss, tf, image, img_path)
+
             if output_type == 'mp4':
                 pil_image = TF.to_pil_image(image[0].add(1).div(2).clamp(0, 1))
                 pil_image.save(f'samples/{i:04}.png')
-
+        print("--- %s seconds ---" % (time.time() - start_time))
         if output_type == 'png':
-            out_path = Path(tempfile.mkdtemp()) / "out.png"
-            TF.to_pil_image(image[0].add(1).div(2).clamp(0, 1)).save(str(out_path))
+            out_path_png = Path(tempfile.mkdtemp()) / "out.png"
+            yield checkin(None, steps, None, tf, image, out_path_png, output_type, video_length, final=True)
         else:
-            out_path = Path(tempfile.mkdtemp()) / "out.mp4"
-            make_video(str(out_path), video_length)
-
-        return out_path
+            out_path_mp4 = Path(tempfile.mkdtemp()) / "out.mp4"
+            yield checkin(None, steps, None, tf, image, out_path_mp4, output_type, video_length, final=True)
 
 
 def make_video(out_path, video_length):
+    t_s = time.time()
     frames = os.listdir('samples')
     frames = len(list(filter(lambda filename: filename.endswith(".png"), frames)))  # Get number of png generated
 
@@ -182,17 +193,19 @@ def make_video(out_path, video_length):
     p.stdin.close()
     p.wait()
     tqdm.write("The video is ready")
+    print(f'videos takes : {time.time() - t_s}')
 
 
-def checkin(i, steps, loss, image):
-    tf = Compose([
-        Resize(224),
-        lambda x: torch.clamp((x + 1) / 2, min=0, max=1),
-    ])
-    tqdm.write(f"Image {i}/{steps} | Current loss: {loss}")
-    img_path = Path(tempfile.mkdtemp()) / "progress.png"
-    TF.to_pil_image(tf(image)[0]).save(str(img_path))
-    return img_path
+def checkin(i, steps, loss, tf, image, out_path, output_type=None, video_length=None, final=False):
+    if not final:
+        tqdm.write(f"Image {i + 1}/{steps} | Current loss: {loss}")
+        TF.to_pil_image(tf(image)[0]).save(str(out_path))
+    else:
+        if output_type == 'png':
+            TF.to_pil_image(image[0].add(1).div(2).clamp(0, 1)).save(str(out_path))
+        else:
+            make_video(str(out_path), video_length)
+    return out_path
 
 
 def fetch(url_or_path):
