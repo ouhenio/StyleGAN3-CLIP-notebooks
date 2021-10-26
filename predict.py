@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 sys.path.insert(0, 'CLIP')
 sys.path.insert(0, 'stylegan3')
 import tempfile
@@ -46,9 +45,11 @@ class Predictor(cog.Predictor):
             self.w_stdss[key] = G.mapping(zs, None).std(0)
 
     @cog.input(
-        "text",
+        "texts",
         type=str,
-        help="text for image generation",
+        help="Enter here a prompt to guide the image generation. You can enter more than one prompt separated with |, "
+             "which will cause the guidance to focus on the different prompts at the same time, allowing to mix "
+             "and play with the generation process."
     )
     @cog.input(
         "model_name",
@@ -91,7 +92,7 @@ class Predictor(cog.Predictor):
         default=2,
         help="set -1 for random seed"
     )
-    def predict(self, text, model_name, steps, output_type, video_length, seed, learning_rate):
+    def predict(self, texts, model_name, steps, output_type, video_length, seed, learning_rate):
         if os.path.isdir('samples'):
             clean_folder('samples')
         os.makedirs(f'samples', exist_ok=True)
@@ -102,14 +103,20 @@ class Predictor(cog.Predictor):
             seed = 2
         if seed == -1:
             seed = np.random.randint(0, 9e9)
-        target = self.clip_model.embed_text(text, self.device)
+
+        texts = [frase.strip() for frase in texts.split("|") if frase]
+        targets = [self.clip_model.embed_text(text, self.device) for text in texts]
+
+        tf = Compose([
+            Resize(224),
+            lambda x: torch.clamp((x + 1) / 2, min=0, max=1),
+        ])
 
         # do run
         torch.manual_seed(seed)
 
         # Init
         # Sample 32 inits and choose the one closest to prompt
-
         with torch.no_grad():
             qs = []
             losses = []
@@ -118,7 +125,7 @@ class Predictor(cog.Predictor):
                                truncation_psi=0.7) - G.mapping.w_avg) / w_stds
                 images = G.synthesis(q * w_stds + G.mapping.w_avg)
                 embeds = embed_image(images.add(1).div(2), self.clip_model)
-                loss = spherical_dist_loss(embeds, target).mean(0)
+                loss = prompts_dist_loss(embeds, targets, spherical_dist_loss).mean(0)
                 i = torch.argmin(loss)
                 qs.append(q[i])
                 losses.append(loss[i])
@@ -131,17 +138,13 @@ class Predictor(cog.Predictor):
         q_ema = q
         opt = torch.optim.AdamW([q], lr=learning_rate, betas=(0.0, 0.999))
         img_path = Path(tempfile.mkdtemp()) / "progress.png"
-        tf = Compose([
-            Resize(224),
-            lambda x: torch.clamp((x + 1) / 2, min=0, max=1),
-        ])
-        start_time = time.time()
+
         for i in range(steps):
             opt.zero_grad()
             w = q * w_stds
             image = G.synthesis(w + G.mapping.w_avg, noise_mode='const')
             embed = embed_image(image.add(1).div(2), self.clip_model)
-            loss = spherical_dist_loss(embed, target).mean()
+            loss = prompts_dist_loss(embed, targets, spherical_dist_loss).mean()
             loss.backward()
             opt.step()
 
@@ -154,7 +157,7 @@ class Predictor(cog.Predictor):
             if output_type == 'mp4':
                 pil_image = TF.to_pil_image(image[0].add(1).div(2).clamp(0, 1))
                 pil_image.save(f'samples/{i:04}.png')
-        print("--- %s seconds ---" % (time.time() - start_time))
+
         if output_type == 'png':
             out_path_png = Path(tempfile.mkdtemp()) / "out.png"
             yield checkin(None, steps, None, tf, image, out_path_png, output_type, video_length, final=True)
@@ -164,7 +167,6 @@ class Predictor(cog.Predictor):
 
 
 def make_video(out_path, video_length):
-    t_s = time.time()
     frames = os.listdir('samples')
     frames = len(list(filter(lambda filename: filename.endswith(".png"), frames)))  # Get number of png generated
 
@@ -193,7 +195,6 @@ def make_video(out_path, video_length):
     p.stdin.close()
     p.wait()
     tqdm.write("The video is ready")
-    print(f'videos takes : {time.time() - t_s}')
 
 
 def checkin(i, steps, loss, tf, image, out_path, output_type=None, video_length=None, final=False):
@@ -241,6 +242,13 @@ def spherical_dist_loss(x, y):
     x = F.normalize(x, dim=-1)
     y = F.normalize(y, dim=-1)
     return (x - y).norm(dim=-1).div(2).arcsin().pow(2).mul(2)
+
+
+def prompts_dist_loss(x, targets, loss):
+    if len(targets) == 1:  # Keeps consitent results vs previous method for single objective guidance
+        return loss(x, targets[0])
+    distances = [loss(x, target) for target in targets]
+    return torch.stack(distances, dim=-1).sum(dim=-1)
 
 
 class MakeCutouts(torch.nn.Module):
