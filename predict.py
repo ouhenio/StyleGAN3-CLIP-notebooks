@@ -27,7 +27,7 @@ class Predictor(cog.Predictor):
     def setup(self):
         self.device = torch.device('cuda:0')
         self.clip_model = CLIP()
-        MODEL_NAME = {
+        NVIDIA_MODEL_NAME = {
             "FFHQ": "stylegan3-t-ffhqu-1024x1024.pkl",
             "MetFaces": "stylegan3-r-metfacesu-1024x1024.pkl",
             "AFHQv2": "stylegan3-t-afhqv2-512x512.pkl"
@@ -36,8 +36,21 @@ class Predictor(cog.Predictor):
 
         self.models = {}
         self.w_stdss = {}
-        for key, value in MODEL_NAME.items():
-            network_url = BASE_URL + MODEL_NAME[key]
+        for key, value in NVIDIA_MODEL_NAME.items():
+            network_url = BASE_URL + value
+            with open(fetch_model(network_url), 'rb') as fp:
+                G = pickle.load(fp)['G_ema'].to(self.device)
+                self.models[key] = G
+            zs = torch.randn([10000, G.mapping.z_dim], device=self.device)
+            self.w_stdss[key] = G.mapping(zs, None).std(0)
+
+        CUSTOM_MODEL_NAME = {
+            "Cosplay": "https://l4rz.net/cosplayface-snapshot-stylegan3t-008000.pkl",
+            "Wikiart": "https://archive.org/download/wikiart-1024-stylegan3-t-17.2Mimg/wikiart-1024-stylegan3-t-17.2Mimg.pkl",
+            "Landscapes": "https://archive.org/download/lhq-256-stylegan3-t-25Mimg/lhq-256-stylegan3-t-25Mimg.pkl"
+        }
+
+        for key, network_url in CUSTOM_MODEL_NAME.items():
             with open(fetch_model(network_url), 'rb') as fp:
                 G = pickle.load(fp)['G_ema'].to(self.device)
                 self.models[key] = G
@@ -55,8 +68,14 @@ class Predictor(cog.Predictor):
         "model_name",
         type=str,
         default='FFHQ',
-        options=['FFHQ', 'MetFaces', 'AFHQv2'],
-        help="choose model: FFHQ: human faces, MetFaces: human faces from works of art, AFHGv2: animal faces"
+        options=['FFHQ', 'MetFaces', 'AFHQv2', 'Cosplay', 'Wikiart', 'Landscape'],
+        help="""choose model: FFHQ: human faces,
+        MetFaces: human faces from works of art,
+        AFHGv2: animal faces,
+        Cosplay: cosplayer's faces (by l4rz),
+        Wikiart: Wikiart 1024 dataset (by Justin Pinkney),
+        Landscapes: landscape images (by Justin Pinkney)
+        """
     )
     @cog.input(
         "output_type",
