@@ -72,9 +72,9 @@ class Predictor(cog.Predictor):
         help="""choose model: FFHQ: human faces,
         MetFaces: human faces from works of art,
         AFHGv2: animal faces,
-        Cosplay: Trained by l4rz with cosplayer's faces,
-        Wikiart: Trained by Justin Pinkney with the Wikiart 1024 dataset,
-        Landscapes: Trained by Justin Pinkney with the LHQ dataset
+        Cosplay: cosplayer's faces (by l4rz),
+        Wikiart: Wikiart 1024 dataset (by Justin Pinkney),
+        Landscapes: landscape images (by Justin Pinkney)
         """
     )
     @cog.input(
